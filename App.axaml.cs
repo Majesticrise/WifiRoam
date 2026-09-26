@@ -79,7 +79,8 @@ public partial class App : Application
             menu.Add(exitItem);
 
             _trayIcon.Menu = menu;
-            this.TrayIcons.Add(_trayIcon);
+            var icons = new TrayIcons { _trayIcon };
+            TrayIcon.SetIcons(this, icons);
         }
         catch (Exception ex)
         {
