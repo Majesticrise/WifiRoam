@@ -18,5 +18,6 @@
     <PackageReference Include="Avalonia" Version="11.3.*" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.*" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.*" />
+    <PackageReference Include="Microsoft.Win32.SystemEvents" Version="10.0.*" />
   </ItemGroup>
 </Project>
