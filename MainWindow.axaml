@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="WifiRoam.MainWindow"
+        x:CompileBindings="True"
         Title="WifiRoam"
         Width="720" Height="520"
         WindowStartupLocation="CenterScreen">
@@ -16,7 +17,7 @@
                 <TextBlock Text="可用网络" Margin="0,12,0,0" FontWeight="Bold"/>
                 <ListBox Name="NetworkList" Height="200">
                     <ListBox.ItemTemplate>
-                        <DataTemplate>
+                        <DataTemplate DataType="x:String">
                             <TextBlock Text="{Binding}" />
                         </DataTemplate>
                     </ListBox.ItemTemplate>
