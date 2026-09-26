@@ -79,7 +79,7 @@ public partial class App : Application
             menu.Add(exitItem);
 
             _trayIcon.Menu = menu;
-            TrayIcons.Add(_trayIcon);
+            this.TrayIcons.Add(_trayIcon);
         }
         catch (Exception ex)
         {
