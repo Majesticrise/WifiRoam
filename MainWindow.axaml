@@ -65,8 +65,9 @@
                     <Button Name="RefreshLogBtn" Content="刷新"/>
                     <Button Name="OpenLogFolderBtn" Content="打开日志文件夹"/>
                 </StackPanel>
-                <TextBox Name="LogTextBox" AcceptsReturn="True" IsReadOnly="True"
-                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
+                    <TextBox Name="LogTextBox" AcceptsReturn="True" IsReadOnly="True" TextWrapping="NoWrap"/>
+                </ScrollViewer>
             </DockPanel>
         </TabItem>
 
