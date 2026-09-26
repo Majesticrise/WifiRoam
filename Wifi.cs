@@ -17,8 +17,8 @@ internal static class Wifi
     private static extern uint WlanOpenHandle(
         uint dwClientVersion,
         IntPtr pReserved,
-        out IntPtr phClientHandle,
-        out uint pdwNegotiatedVersion);
+        out uint pdwNegotiatedVersion,
+        out IntPtr phClientHandle);
 
     [DllImport(WlanApi, ExactSpelling = true)]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
@@ -306,7 +306,7 @@ internal static class Wifi
     {
         if (_initialized) return true;
     
-        var res = WlanOpenHandle(WLAN_CLIENT_VERSION_VISTA, IntPtr.Zero, out _clientHandle, out _);
+        var res = WlanOpenHandle(WLAN_CLIENT_VERSION_VISTA, IntPtr.Zero, out _, out _clientHandle);
         if (res != 0)
         {
             Log?.Invoke($"WlanOpenHandle 失败: {res}");
