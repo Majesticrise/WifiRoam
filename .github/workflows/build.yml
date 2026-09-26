@@ -3,7 +3,11 @@ name: Build WifiRoam
 on:
   push:
     branches: [ main ]
+    tags: [ 'v*' ]
   workflow_dispatch: {}
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -35,3 +39,12 @@ jobs:
         with:
           name: WifiRoam
           path: bin/Release/net10.0-windows/win-x64/publish/
+
+      - name: Create Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bin/Release/net10.0-windows/win-x64/publish/WifiRoam.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: false
