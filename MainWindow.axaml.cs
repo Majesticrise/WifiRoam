@@ -19,7 +19,7 @@ public partial class MainWindow : Window
         BindEvents();
         LoadConfigToUi();
     }
-
+    
     private void InitializeComponent()
     {
         AvaloniaXamlLoader.Load(this);
@@ -66,27 +66,60 @@ public partial class MainWindow : Window
     {
         var refreshBtn = this.FindControl<Button>("RefreshBtn");
         if (refreshBtn != null) refreshBtn.Click += (_, _) => RefreshNetworks();
-
+    
         var saveBtn = this.FindControl<Button>("SaveConfigBtn");
         if (saveBtn != null) saveBtn.Click += (_, _) => SaveConfigFromUi();
-
+    
         var refreshLogBtn = this.FindControl<Button>("RefreshLogBtn");
         if (refreshLogBtn != null) refreshLogBtn.Click += (_, _) => RefreshLog();
-
+    
         var openLogFolderBtn = this.FindControl<Button>("OpenLogFolderBtn");
         if (openLogFolderBtn != null) openLogFolderBtn.Click += (_, _) => OpenLogFolder();
-
+    
         var checkUpdateBtn = this.FindControl<Button>("CheckUpdateBtn");
-        if (checkUpdateBtn != null) checkUpdateBtn.Click += (_, _) =>
+        if (checkUpdateBtn != null) checkUpdateBtn.Click += async (_, _) => await ManualCheckUpdateAsync();
+    
+        // 计划任务开关
+        var autoStartCheck = this.FindControl<CheckBox>("AutoStartCheck");
+        if (autoStartCheck != null)
         {
-            var status = this.FindControl<TextBlock>("UpdateStatusText");
-            if (status != null) status.Text = "更新检查将在后续阶段实现";
-        };
-
-        // 配置热重载后刷新 UI
+            autoStartCheck.IsChecked = Platform.IsAutoStartEnabled();
+            autoStartCheck.Click += (_, _) =>
+            {
+                var want = autoStartCheck.IsChecked == true;
+                var ok = want ? Platform.EnableAutoStart() : Platform.DisableAutoStart();
+                if (!ok)
+                {
+                    autoStartCheck.IsChecked = !want;
+                    Storage.LogError("计划任务操作失败");
+                }
+                else
+                {
+                    var cfg = Storage.Config;
+                    cfg.AutoStart = want;
+                    Storage.SaveConfig(cfg);
+                }
+            };
+        }
+    
+        // 通知开关
+        var notificationCheck = this.FindControl<CheckBox>("NotificationCheck");
+        if (notificationCheck != null)
+        {
+            notificationCheck.IsChecked = Storage.Config.Notifications;
+            notificationCheck.Click += (_, _) =>
+            {
+                var cfg = Storage.Config;
+                cfg.Notifications = notificationCheck.IsChecked == true;
+                Storage.SaveConfig(cfg);
+            };
+        }
+    
         Storage.ConfigChanged += _ => Dispatcher.UIThread.Post(LoadConfigToUi);
+    
+        // 启动时后台检查更新
+        _ = CheckUpdateOnStartupAsync();
     }
-
     private void LoadConfigToUi()
     {
         var cfg = Storage.Config;
@@ -111,7 +144,7 @@ public partial class MainWindow : Window
         };
 
         var autoStartCheck = this.FindControl<CheckBox>("AutoStartCheck");
-        if (autoStartCheck != null) autoStartCheck.IsChecked = cfg.AutoStart;
+        if (autoStartCheck != null) autoStartCheck.IsChecked = Platform.IsAutoStartEnabled();
 
         var notificationCheck = this.FindControl<CheckBox>("NotificationCheck");
         if (notificationCheck != null) notificationCheck.IsChecked = cfg.Notifications;
@@ -135,7 +168,6 @@ public partial class MainWindow : Window
             2 => "debug",
             _ => "switch"
         };
-        cfg.AutoStart = this.FindControl<CheckBox>("AutoStartCheck")?.IsChecked ?? false;
         cfg.Notifications = this.FindControl<CheckBox>("NotificationCheck")?.IsChecked ?? true;
 
         Storage.SaveConfig(cfg);
@@ -172,7 +204,45 @@ public partial class MainWindow : Window
             logBox.Text = $"读取日志失败: {ex.Message}";
         }
     }
+    private async Task CheckUpdateOnStartupAsync()
+    {
+        if (!Storage.Config.CheckUpdate) return;
+        await Task.Delay(3000); // 启动后延迟 3 秒，避免影响启动体验
+        await DoCheckUpdateAsync(manual: false);
+    }
 
+    private async Task ManualCheckUpdateAsync()
+    {
+        await DoCheckUpdateAsync(manual: true);
+    }
+    
+    private async Task DoCheckUpdateAsync(bool manual)
+    {
+        var status = this.FindControl<TextBlock>("UpdateStatusText");
+        if (status != null) status.Text = "正在检查更新...";
+    
+        var release = await Platform.CheckForUpdateAsync();
+        if (release == null)
+        {
+            if (status != null) status.Text = manual ? "检查更新失败" : "";
+            return;
+        }
+    
+        if (!Platform.IsNewerVersion(release.TagName, Storage.Config.Version))
+        {
+            if (status != null) status.Text = "当前已是最新版本";
+            return;
+        }
+    
+        if (status != null) status.Text = $"发现新版本 {release.TagName}，正在下载...";
+        var ok = await Platform.DownloadUpdateAsync(release);
+        if (status != null)
+            status.Text = ok
+                ? "新版本已下载到程序目录，重启后生效"
+                : "下载失败";
+    
+        if (ok) Platform.Notify("WifiRoam 更新", "新版本已下载，重启后生效");
+    }
     private void OpenLogFolder()
     {
         try
