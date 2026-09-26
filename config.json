@@ -1,0 +1,14 @@
+{
+  "signalThreshold": 30,
+  "targetThreshold": 45,
+  "cooldownSeconds": 60,
+  "priority": [],
+  "blocked": [],
+  "logLevel": "switch",
+  "logMaxSizeMB": 1,
+  "logRetainDays": 7,
+  "notifications": true,
+  "autoStart": false,
+  "checkUpdate": true,
+  "version": "1.0.0"
+}
