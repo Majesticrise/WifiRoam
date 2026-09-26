@@ -2,8 +2,82 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="WifiRoam.MainWindow"
         Title="WifiRoam"
-        Width="600" Height="400">
-    <TextBlock Text="WifiRoam 已启动"
-               HorizontalAlignment="Center"
-               VerticalAlignment="Center" />
+        Width="720" Height="520"
+        WindowStartupLocation="CenterScreen">
+
+    <TabControl Name="MainTabs">
+        <!-- 状态页 -->
+        <TabItem Header="状态">
+            <StackPanel Margin="12" Spacing="8">
+                <TextBlock Name="CurrentSsidText" Text="当前 SSID: -" FontSize="14" FontWeight="Bold"/>
+                <TextBlock Name="CurrentSignalText" Text="信号强度: -"/>
+                <TextBlock Name="StatusHintText" Text="" Foreground="Gray"/>
+
+                <TextBlock Text="可用网络" Margin="0,12,0,0" FontWeight="Bold"/>
+                <ListBox Name="NetworkList" Height="200">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Button Name="RefreshBtn" Content="刷新" HorizontalAlignment="Left"/>
+            </StackPanel>
+        </TabItem>
+
+        <!-- 设置页 -->
+        <TabItem Header="设置">
+            <StackPanel Margin="12" Spacing="8">
+                <Grid ColumnDefinitions="180,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="当前信号阈值(%)" VerticalAlignment="Center"/>
+                    <NumericUpDown Grid.Row="0" Grid.Column="1" Name="SignalThresholdBox" Minimum="0" Maximum="100" Increment="1" />
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="目标信号阈值(%)" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                    <NumericUpDown Grid.Row="1" Grid.Column="1" Name="TargetThresholdBox" Minimum="0" Maximum="100" Increment="1" Margin="0,8,0,0"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="冷却时间(秒)" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                    <NumericUpDown Grid.Row="2" Grid.Column="1" Name="CooldownBox" Minimum="0" Maximum="600" Increment="1" Margin="0,8,0,0"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="黑名单(逗号分隔)" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                    <TextBox Grid.Row="3" Grid.Column="1" Name="BlockedBox" Margin="0,8,0,0"/>
+
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="日志级别" VerticalAlignment="Center" Margin="0,8,0,0"/>
+                    <ComboBox Grid.Row="4" Grid.Column="1" Name="LogLevelBox" Margin="0,8,0,0">
+                        <ComboBoxItem Content="off"/>
+                        <ComboBoxItem Content="switch"/>
+                        <ComboBoxItem Content="debug"/>
+                    </ComboBox>
+                </Grid>
+
+                <StackPanel Orientation="Horizontal" Spacing="12" Margin="0,16,0,0">
+                    <Button Name="SaveConfigBtn" Content="保存配置"/>
+                    <CheckBox Name="AutoStartCheck" Content="开机自启(需UAC)"/>
+                    <CheckBox Name="NotificationCheck" Content="启用通知"/>
+                </StackPanel>
+            </StackPanel>
+        </TabItem>
+
+        <!-- 日志页 -->
+        <TabItem Header="日志">
+            <DockPanel Margin="12">
+                <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="0,0,0,8">
+                    <Button Name="RefreshLogBtn" Content="刷新"/>
+                    <Button Name="OpenLogFolderBtn" Content="打开日志文件夹"/>
+                </StackPanel>
+                <TextBox Name="LogTextBox" AcceptsReturn="True" IsReadOnly="True"
+                         VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"/>
+            </DockPanel>
+        </TabItem>
+
+        <!-- 关于页 -->
+        <TabItem Header="关于">
+            <StackPanel Margin="12" Spacing="8">
+                <TextBlock Name="VersionText" Text="WifiRoam v1.0.0" FontSize="16" FontWeight="Bold"/>
+                <TextBlock Text="自动 Wi-Fi 切换工具" Foreground="Gray"/>
+                <Button Name="CheckUpdateBtn" Content="检查更新" HorizontalAlignment="Left" Margin="0,12,0,0"/>
+                <TextBlock Name="UpdateStatusText" Text="" Foreground="Gray"/>
+            </StackPanel>
+        </TabItem>
+    </TabControl>
 </Window>
