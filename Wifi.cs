@@ -149,27 +149,124 @@ internal static class Wifi
         Any = 3
     }
 
+    private enum WlanInterfaceState
+    {
+        NotReady = 0,
+        Connected = 1,
+        AdHocNetworkFormed = 2,
+        Disconnecting = 3,
+        Disconnected = 4,
+        Associating = 5,
+        Discovering = 6,
+        Authenticating = 7,
+    }
+
+    // ---------- 结构体：用显式偏移，避免任何对齐歧义 ----------
+
+    [StructLayout(LayoutKind.Explicit, Size = 648)]
+    private struct WlanConnectionAttributes
+    {
+        [FieldOffset(0)] public WlanInterfaceState isState;
+        [FieldOffset(4)] public WlanConnectionMode wlanConnectionMode;
+        // strProfileName 512 字节，从 8 到 520，跳过
+        [FieldOffset(520)] public Dot11Ssid dot11Ssid;
+        [FieldOffset(556)] public Dot11BssType dot11BssType;
+        [FieldOffset(560)] public uint uNumberOfBssids;
+        [FieldOffset(564)] public int bNetworkConnectable;
+        [FieldOffset(568)] public uint wlanNotConnectableReason;
+        [FieldOffset(572)] public uint uNumberOfPhyTypes;
+        // dot11PhyTypes 32 字节，从 576 到 608，跳过
+        [FieldOffset(608)] public int bMorePhyTypes;
+        [FieldOffset(612)] public uint wlanSignalQuality;
+        [FieldOffset(616)] public int bSecurityEnabled;
+        [FieldOffset(620)] public uint dot11AuthAlgorithm;
+        [FieldOffset(624)] public uint dot11CipherAlgorithm;
+        [FieldOffset(628)] public Guid dot11Bssid;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 36)]
+    private struct Dot11Ssid
+    {
+        [FieldOffset(0)] public uint uSSIDLength;
+        [FieldOffset(4)] public byte b0;
+        [FieldOffset(5)] public byte b1;
+        [FieldOffset(6)] public byte b2;
+        [FieldOffset(7)] public byte b3;
+        [FieldOffset(8)] public byte b4;
+        [FieldOffset(9)] public byte b5;
+        [FieldOffset(10)] public byte b6;
+        [FieldOffset(11)] public byte b7;
+        [FieldOffset(12)] public byte b8;
+        [FieldOffset(13)] public byte b9;
+        [FieldOffset(14)] public byte b10;
+        [FieldOffset(15)] public byte b11;
+        [FieldOffset(16)] public byte b12;
+        [FieldOffset(17)] public byte b13;
+        [FieldOffset(18)] public byte b14;
+        [FieldOffset(19)] public byte b15;
+        [FieldOffset(20)] public byte b16;
+        [FieldOffset(21)] public byte b17;
+        [FieldOffset(22)] public byte b18;
+        [FieldOffset(23)] public byte b19;
+        [FieldOffset(24)] public byte b20;
+        [FieldOffset(25)] public byte b21;
+        [FieldOffset(26)] public byte b22;
+        [FieldOffset(27)] public byte b23;
+        [FieldOffset(28)] public byte b24;
+        [FieldOffset(29)] public byte b25;
+        [FieldOffset(30)] public byte b26;
+        [FieldOffset(31)] public byte b27;
+        [FieldOffset(32)] public byte b28;
+        [FieldOffset(33)] public byte b29;
+        [FieldOffset(34)] public byte b30;
+        [FieldOffset(35)] public byte b31;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 628)]
+    private struct WlanAvailableNetwork
+    {
+        // strProfileName 512 字节，从 0 到 512，跳过
+        [FieldOffset(512)] public Dot11Ssid dot11Ssid;
+        [FieldOffset(548)] public Dot11BssType dot11BssType;
+        [FieldOffset(552)] public uint uNumberOfBssids;
+        [FieldOffset(556)] public int bNetworkConnectable;
+        [FieldOffset(560)] public uint wlanNotConnectableReason;
+        [FieldOffset(564)] public uint uNumberOfPhyTypes;
+        // dot11PhyTypes 32 字节，从 568 到 600，跳过
+        [FieldOffset(600)] public int bMorePhyTypes;
+        [FieldOffset(604)] public uint wlanSignalQuality;
+        [FieldOffset(608)] public int bSecurityEnabled;
+        [FieldOffset(612)] public uint dot11AuthAlgorithm;
+        [FieldOffset(616)] public uint dot11CipherAlgorithm;
+        [FieldOffset(620)] public uint dwFlags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WlanInterfaceInfoList
+    {
+        public uint dwNumberOfItems;
+        public uint dwIndex;
+    }
+
     // ---------- 内部状态 ----------
     private static IntPtr _clientHandle = IntPtr.Zero;
     private static Guid _interfaceGuid;
     private static bool _initialized;
 
-    private static WlanNotificationCallbackDelegate? _callback; // 防止 GC 回收
+    private static WlanNotificationCallbackDelegate? _callback;
 
-    // 自动切换相关
     private static DateTime _lastSwitchTime = DateTime.MinValue;
     private static DateTime _lastEvaluate = DateTime.MinValue;
     private static string _currentSsid = "";
     private static uint _currentSignal = 0;
 
-    // 配置（由 Storage 模块注入）
+    // 配置
     public static int SignalThreshold { get; set; } = 30;
     public static int TargetThreshold { get; set; } = 45;
     public static int CooldownSeconds { get; set; } = 60;
     public static HashSet<string> Blocked { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public static List<string> Priority { get; set; } = new();
 
-    // 事件：状态变化时通知 UI
     public static event Action<string, uint>? StatusChanged;
     public static event Action<string>? Log;
 
@@ -193,7 +290,6 @@ internal static class Wifi
             return false;
         }
 
-        // 注册通知
         _callback = OnWlanNotification;
         res = WlanRegisterNotification(
             _clientHandle,
@@ -207,10 +303,8 @@ internal static class Wifi
         if (res != 0)
         {
             Log?.Invoke($"WlanRegisterNotification 失败: {res}");
-            // 不致命，继续，靠定时器兜底
         }
 
-        // 监听电源事件：休眠/唤醒后重新评估
         try
         {
             Microsoft.Win32.SystemEvents.PowerModeChanged += (_, e) =>
@@ -251,8 +345,8 @@ internal static class Wifi
 
         try
         {
-            // WLAN_INTERFACE_INFO_LIST: dwNumberOfItems (4) + dwIndex (4) + 数组
-            // WLAN_INTERFACE_INFO: InterfaceGuid(16) + strInterfaceDescription[256](512) + isState(4) = 532
+            // WLAN_INTERFACE_INFO_LIST: dwNumberOfItems(4) + dwIndex(4) + 数组
+            // WLAN_INTERFACE_INFO: InterfaceGuid(16) + strInterfaceDescription[256](512) + isState(4)
             const int headerSize = 8;
 
             var count = Marshal.ReadInt32(ppList, 0);
@@ -289,15 +383,11 @@ internal static class Wifi
 
         try
         {
-            // WLAN_CONNECTION_ATTRIBUTES 手动按偏移读取
-            // 偏移 0:  isState (int)       — 1 = Connected
-            // 偏移 520: dot11Ssid           — 4 字节长度 + 32 字节 SSID
-            // 偏移 612: wlanSignalQuality   — uint
-            var isState = Marshal.ReadInt32(ppData, 0);
-            if (isState != 1) return false;
+            var attr = Marshal.PtrToStructure<WlanConnectionAttributes>(ppData);
+            if (attr.isState != WlanInterfaceState.Connected) return false;
 
-            ssid = ReadSsid(IntPtr.Add(ppData, 520));
-            signal = (uint)Marshal.ReadInt32(ppData, 612);
+            ssid = ReadSsid(attr.dot11Ssid);
+            signal = attr.wlanSignalQuality;
 
             _currentSsid = ssid;
             _currentSignal = signal;
@@ -339,13 +429,10 @@ internal static class Wifi
 
         try
         {
-            // WLAN_AVAILABLE_NETWORK_LIST: dwNumberOfItems (4) + dwIndex (4) + 数组
-            // WLAN_AVAILABLE_NETWORK 大小 624 字节:
-            //   0:   strProfileName[256]  (512)
-            //   512: dot11Ssid            (36)
-            //   604: wlanSignalQuality    (4)
+            // WLAN_AVAILABLE_NETWORK_LIST: dwNumberOfItems(4) + dwIndex(4) + 数组
+            // WLAN_AVAILABLE_NETWORK 大小 628 字节
             const int headerSize = 8;
-            const int itemSize = 624;
+            const int itemSize = 628;
 
             var count = Marshal.ReadInt32(ppList, 0);
             for (int i = 0; i < count; i++)
@@ -353,8 +440,9 @@ internal static class Wifi
                 var itemPtr = IntPtr.Add(ppList, headerSize + i * itemSize);
 
                 var profileName = ReadStringW(itemPtr, 256);
-                var ssid = ReadSsid(IntPtr.Add(itemPtr, 512));
-                var signal = (uint)Marshal.ReadInt32(itemPtr, 604);
+                var network = Marshal.PtrToStructure<WlanAvailableNetwork>(itemPtr);
+                var ssid = ReadSsid(network.dot11Ssid);
+                var signal = network.wlanSignalQuality;
                 var hasProfile = !string.IsNullOrEmpty(profileName);
 
                 if (string.IsNullOrEmpty(ssid)) continue;
@@ -378,10 +466,10 @@ internal static class Wifi
             return;
 
         if (currentSignal >= SignalThreshold)
-            return; // 当前信号还行，不切
+            return;
 
         if ((DateTime.Now - _lastSwitchTime).TotalSeconds < CooldownSeconds)
-            return; // 冷却中
+            return;
 
         var available = ScanAvailableNetworks();
         var candidates = available
@@ -393,7 +481,6 @@ internal static class Wifi
         if (candidates.Count == 0)
             return;
 
-        // 按优先级排序：优先级列表里靠前的排前面，不在列表里的排最后；同优先级按信号降序
         var ordered = candidates
             .OrderBy(n => Priority.IndexOf(n.Ssid) >= 0 ? Priority.IndexOf(n.Ssid) : int.MaxValue)
             .ThenByDescending(n => n.Signal)
@@ -417,7 +504,6 @@ internal static class Wifi
     {
         if (!_initialized && !Initialize()) return false;
 
-        // 使用已保存 profile 名连接。假设 SSID 与 profile 名一致。
         var profileNamePtr = Marshal.StringToHGlobalUni(ssid);
         try
         {
@@ -443,7 +529,6 @@ internal static class Wifi
     // ---------- 通知回调 ----------
     private static void OnWlanNotification(IntPtr pNotifyData, IntPtr pContext)
     {
-        // 节流：1 秒内多次通知只评估一次
         var now = DateTime.Now;
         if ((now - _lastEvaluate).TotalMilliseconds < 1000) return;
         _lastEvaluate = now;
@@ -459,19 +544,26 @@ internal static class Wifi
     }
 
     // ---------- 工具方法 ----------
-    private static string ReadSsid(IntPtr ptr)
+    private static string ReadSsid(Dot11Ssid ssid)
     {
-        // Dot11Ssid: uint uSSIDLength; byte ucSSID[32]
-        var len = Marshal.ReadInt32(ptr);
+        var len = (int)ssid.uSSIDLength;
         if (len <= 0 || len > 32) return "";
-        var bytes = new byte[len];
-        Marshal.Copy(IntPtr.Add(ptr, 4), bytes, 0, len);
-        return System.Text.Encoding.UTF8.GetString(bytes);
+
+        var bytes = new byte[32];
+        bytes[0] = ssid.b0;  bytes[1] = ssid.b1;  bytes[2] = ssid.b2;  bytes[3] = ssid.b3;
+        bytes[4] = ssid.b4;  bytes[5] = ssid.b5;  bytes[6] = ssid.b6;  bytes[7] = ssid.b7;
+        bytes[8] = ssid.b8;  bytes[9] = ssid.b9;  bytes[10] = ssid.b10; bytes[11] = ssid.b11;
+        bytes[12] = ssid.b12; bytes[13] = ssid.b13; bytes[14] = ssid.b14; bytes[15] = ssid.b15;
+        bytes[16] = ssid.b16; bytes[17] = ssid.b17; bytes[18] = ssid.b18; bytes[19] = ssid.b19;
+        bytes[20] = ssid.b20; bytes[21] = ssid.b21; bytes[22] = ssid.b22; bytes[23] = ssid.b23;
+        bytes[24] = ssid.b24; bytes[25] = ssid.b25; bytes[26] = ssid.b26; bytes[27] = ssid.b27;
+        bytes[28] = ssid.b28; bytes[29] = ssid.b29; bytes[30] = ssid.b30; bytes[31] = ssid.b31;
+
+        return System.Text.Encoding.UTF8.GetString(bytes, 0, len);
     }
 
     private static string ReadStringW(IntPtr ptr, int maxChars)
     {
-        // 读 WCHAR 数组，遇到 \0 停止
         var sb = new System.Text.StringBuilder();
         for (int i = 0; i < maxChars; i++)
         {
@@ -482,7 +574,6 @@ internal static class Wifi
         return sb.ToString();
     }
 
-    // 供外部定时兜底调用
     public static void Tick()
     {
         if (!_initialized) return;
