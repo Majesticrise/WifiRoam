@@ -1,17 +1,17 @@
-using System;
-using System.IO;
+using Avalonia;
 
 namespace WifiRoam;
 
 internal static class Program
 {
-    private static void Main()
+    [STAThread]
+    public static void Main(string[] args)
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var dir = Path.Combine(appData, "WifiRoam");
-        Directory.CreateDirectory(dir);
-
-        var log = Path.Combine(dir, "startup.log");
-        File.AppendAllText(log, $"{DateTime.Now:O} WifiRoam started{Environment.NewLine}");
+        BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
+
+    public static AppBuilder BuildAvaloniaApp()
+        => AppBuilder.Configure<App>()
+            .UsePlatformDetect()
+            .LogToTrace();
 }
