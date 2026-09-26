@@ -367,9 +367,9 @@ internal static class Wifi
     {
         ssid = "";
         signal = 0;
-
+    
         if (!_initialized && !Initialize()) return false;
-
+    
         var res = WlanQueryInterface(
             _clientHandle,
             ref _interfaceGuid,
@@ -378,26 +378,42 @@ internal static class Wifi
             out _,
             out var ppData,
             out _);
-
+    
         if (res != 0 || ppData == IntPtr.Zero) return false;
-
+    
         try
         {
-            var attr = Marshal.PtrToStructure<WlanConnectionAttributes>(ppData);
-            if (attr.isState != WlanInterfaceState.Connected) return false;
-
-            ssid = ReadSsid(attr.dot11Ssid);
-            signal = attr.wlanSignalQuality;
-
-            _currentSsid = ssid;
-            _currentSignal = signal;
-            StatusChanged?.Invoke(ssid, signal);
-            return true;
+            // 只从 WlanConnectionAttributes 里取连接状态和 SSID
+            // isState 在偏移 0，dot11Ssid 在偏移 520
+            var isState = Marshal.ReadInt32(ppData, 0);
+            if (isState != 1) return false;
+    
+            ssid = ReadSsid(IntPtr.Add(ppData, 520));
+            if (string.IsNullOrEmpty(ssid)) return false;
         }
         finally
         {
             WlanFreeMemory(ppData);
         }
+    
+        // 信号从扫描列表匹配，因为 WlanConnectionAttributes 的 wlanSignalQuality 偏移在部分驱动下不稳定
+        signal = GetSignalFromScan(ssid);
+    
+        _currentSsid = ssid;
+        _currentSignal = signal;
+        StatusChanged?.Invoke(ssid, signal);
+        return true;
+    }
+    
+    private static uint GetSignalFromScan(string ssid)
+    {
+        var list = ScanAvailableNetworks();
+        foreach (var n in list)
+        {
+            if (string.Equals(n.Ssid, ssid, StringComparison.OrdinalIgnoreCase))
+                return n.Signal;
+        }
+        return 0;
     }
 
     // ---------- 扫描可用网络 ----------
@@ -433,30 +449,49 @@ internal static class Wifi
             // WLAN_AVAILABLE_NETWORK 大小 628 字节
             const int headerSize = 8;
             const int itemSize = 628;
-
+        
+            // 用字典去重：SSID → (Signal, HasProfile)
+            var merged = new Dictionary<string, (uint Signal, bool HasProfile)>(StringComparer.OrdinalIgnoreCase);
+        
             var count = Marshal.ReadInt32(ppList, 0);
             for (int i = 0; i < count; i++)
             {
                 var itemPtr = IntPtr.Add(ppList, headerSize + i * itemSize);
-
+        
                 var profileName = ReadStringW(itemPtr, 256);
                 var network = Marshal.PtrToStructure<WlanAvailableNetwork>(itemPtr);
                 var ssid = ReadSsid(network.dot11Ssid);
                 var signal = network.wlanSignalQuality;
                 var hasProfile = !string.IsNullOrEmpty(profileName);
-
+        
                 if (string.IsNullOrEmpty(ssid)) continue;
                 if (Blocked.Contains(ssid)) continue;
-
-                result.Add((ssid, signal, hasProfile));
+        
+                if (merged.TryGetValue(ssid, out var existing))
+                {
+                    merged[ssid] = (
+                        Math.Max(existing.Signal, signal),
+                        existing.HasProfile || hasProfile
+                    );
+                }
+                else
+                {
+                    merged[ssid] = (signal, hasProfile);
+                }
+            }
+        
+            foreach (var kv in merged)
+            {
+                result.Add((kv.Key, kv.Value.Signal, kv.Value.HasProfile));
             }
         }
         finally
         {
             WlanFreeMemory(ppList);
         }
-
-        return result;
+        
+        // 按信号降序排一下，UI 更好看
+        result.Sort((a, b) => b.Signal.CompareTo(a.Signal));
     }
 
     // ---------- 自动切换逻辑 ----------
