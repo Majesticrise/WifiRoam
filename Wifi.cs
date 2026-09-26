@@ -302,18 +302,17 @@ internal static class Wifi
     public static event Action<string, uint>? StatusChanged;
     public static event Action<string>? Log;
 
-    // ---------- 初始化 ----------
     public static bool Initialize()
     {
         if (_initialized) return true;
-
+    
         var res = WlanOpenHandle(WLAN_CLIENT_VERSION_VISTA, IntPtr.Zero, out _clientHandle, out _);
         if (res != 0)
         {
             Log?.Invoke($"WlanOpenHandle 失败: {res}");
             return false;
         }
-
+    
         if (!GetFirstInterface(out _interfaceGuid))
         {
             Log?.Invoke("未找到无线网卡");
@@ -321,7 +320,7 @@ internal static class Wifi
             _clientHandle = IntPtr.Zero;
             return false;
         }
-
+    
         // 注册通知
         _callback = OnWlanNotification;
         res = WlanRegisterNotification(
@@ -332,13 +331,30 @@ internal static class Wifi
             IntPtr.Zero,
             IntPtr.Zero,
             out _);
-
+    
         if (res != 0)
         {
             Log?.Invoke($"WlanRegisterNotification 失败: {res}");
-            // 不致命，继续，只是无法实时收到通知，可以靠定时器兜底
+            // 不致命，继续，靠定时器兜底
         }
-
+    
+        // 监听电源事件：休眠/唤醒后重新评估
+        try
+        {
+            Microsoft.Win32.SystemEvents.PowerModeChanged += (_, e) =>
+            {
+                if (e.Mode == Microsoft.Win32.PowerModes.Resume)
+                {
+                    Log?.Invoke("系统唤醒，准备重新评估网络");
+                    System.Threading.Tasks.Task.Delay(5000).ContinueWith(_ => Tick());
+                }
+            };
+        }
+        catch (Exception ex)
+        {
+            Log?.Invoke($"注册电源事件失败: {ex.Message}");
+        }
+    
         _initialized = true;
         Log?.Invoke("WLAN 初始化成功");
         return true;
